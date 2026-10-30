@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import smtplib
-from datetime import datetime
+import re
+from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 
 from flask import Blueprint, current_app, jsonify, request
 
-from .reports import build_person_rows, build_task_rows
-from ..email_report import build_owner_weekly_email_payload, render_owner_weekly_email_text
+from .reports import build_person_rows, build_summary, build_task_rows
+from ..email_report import (
+    build_owner_weekly_email_payload,
+    render_owner_weekly_email_html,
+    render_owner_weekly_email_text,
+    render_weekly_report_csv,
+    resolve_weekly_report_recipients,
+)
 from ..extensions import db
-from ..models import AppSetting
+from ..models import AppSetting, AssignmentItem, AssignmentRun, TaskCompletion, TaskTemplate, User
 from ..security import role_required
 
 bp = Blueprint("owner", __name__, url_prefix="/api/owner")
@@ -30,14 +37,65 @@ def _set_setting(key: str, value: str) -> None:
     db.session.commit()
 
 
+def _weekly_recipients() -> list[str]:
+    users = User.query.filter(User.role.in_(["manager", "owner"])).all()
+    return resolve_weekly_report_recipients(users, _get_setting("owner_report_email", ""))
+
+
+def _week_label(week_key: str) -> str:
+    match = re.fullmatch(r"(\d{4})-W(\d{2})", week_key or "")
+    if not match:
+        return week_key
+    start = date.fromisocalendar(int(match.group(1)), int(match.group(2)), 4)
+    end = start + timedelta(days=6)
+    return f"Thursday, {start:%B} {start.day}, {start.year} through Wednesday, {end:%B} {end.day}, {end.year}"
+
+
 def _build_report_payload(week_key: str) -> dict:
     filters = {"week": week_key} if week_key != "current" else {}
     person_rows = build_person_rows(filters)
     task_rows = build_task_rows(filters)
-    return build_owner_weekly_email_payload(week_key, person_rows, task_rows)
+    summary_data = build_summary(filters)
+    items_query = AssignmentItem.query.join(AssignmentRun).join(TaskTemplate).filter(AssignmentRun.status == "posted")
+    if week_key != "current":
+        items_query = items_query.filter(AssignmentRun.week_key == week_key)
+    items = items_query.order_by(AssignmentRun.week_key, AssignmentItem.id).all()
+    run_weeks = {run.id: run.week_key for run in AssignmentRun.query.all()}
+    completions = {row.assignment_item_id: row for row in TaskCompletion.query.all()}
+    users = {row.id: row.name for row in User.query.all()}
+    task_templates = {row.id: row for row in TaskTemplate.query.all()}
+    assignment_rows = []
+    source_counts = {"crew_self": 0, "manager_on_behalf": 0}
+    for item in items:
+        completion = completions.get(item.id)
+        status = completion.completion_status if completion else "open"
+        source = completion.completion_source if completion else ""
+        if source in source_counts:
+            source_counts[source] += 1
+        task = task_templates[item.task_template_id]
+        assignment_rows.append({
+            "week": run_weeks.get(item.run_id, week_key),
+            "task_number": task.master_list_number or "",
+            "task_title": task.title,
+            "job_code": task.responsible_job_code.name if task.responsible_job_code else "",
+            "assignee_name": users.get(item.assignee_user_id, f"user-{item.assignee_user_id}"),
+            "completion_status": status,
+            "completion_source": source,
+            "completed_by_name": users.get(completion.completed_by, "") if completion else "",
+            "manager_reason": completion.manager_reason or "" if completion else "",
+            "completed_at": completion.completed_at.isoformat() if completion else "",
+        })
+    summary = dict(summary_data["summary"])
+    summary.update(source_counts)
+    payload = build_owner_weekly_email_payload(week_key, person_rows, task_rows)
+    payload.update(summary_data)
+    payload["summary"] = summary
+    payload["assignment_rows"] = assignment_rows
+    payload["week_label"] = _week_label(week_key)
+    return payload
 
 
-def _send_email_message(week_key: str, recipient: str, body_text: str) -> None:
+def _send_email_message(week_key: str, recipients: list[str], payload: dict) -> None:
     smtp_host = current_app.config.get("SMTP_HOST")
     smtp_port = current_app.config.get("SMTP_PORT", 587)
     smtp_user = current_app.config.get("SMTP_USER")
@@ -49,10 +107,17 @@ def _send_email_message(week_key: str, recipient: str, body_text: str) -> None:
         raise RuntimeError("smtp_not_configured")
 
     msg = EmailMessage()
-    msg["Subject"] = f"TaskAssigner+ Weekly Summary ({week_key})"
+    msg["Subject"] = f"TaskAssigner+ Weekly Completion Report — {_week_label(week_key)}"
     msg["From"] = email_from
-    msg["To"] = recipient
-    msg.set_content(body_text)
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(render_owner_weekly_email_text(payload))
+    msg.add_alternative(render_owner_weekly_email_html(payload), subtype="html")
+    msg.add_attachment(
+        render_weekly_report_csv(payload).encode("utf-8"),
+        maintype="text",
+        subtype="csv",
+        filename=f"taskassigner-weekly-report-{week_key}.csv",
+    )
 
     with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp:
         if smtp_use_tls:
@@ -100,8 +165,8 @@ def process_scheduled_owner_email(now_utc: datetime | None = None, force: bool =
     if not cfg["enabled"] and not force:
         return {"ok": True, "status": "disabled", "week": week_key, "schedule": cfg}, 200
 
-    recipient = _get_setting("owner_report_email", "")
-    if not recipient:
+    recipients = _weekly_recipients()
+    if not recipients:
         return {"ok": False, "error": "owner_report_email_not_set"}, 400
 
     smtp_host = current_app.config.get("SMTP_HOST")
@@ -116,14 +181,12 @@ def process_scheduled_owner_email(now_utc: datetime | None = None, force: bool =
             return {"ok": True, "status": "already_sent", "week": week_key, "schedule": cfg}, 200
 
     payload = _build_report_payload(week_key)
-    body_text = render_owner_weekly_email_text(payload)
-
     if dry_run:
-        return {"ok": True, "status": "would_send", "week": week_key, "sent_to": recipient, "schedule": cfg}, 200
+        return {"ok": True, "status": "would_send", "week": week_key, "sent_to": recipients, "schedule": cfg}, 200
 
-    _send_email_message(week_key, recipient, body_text)
+    _send_email_message(week_key, recipients, payload)
     _set_setting("owner_weekly_schedule_last_sent_week", week_key)
-    return {"ok": True, "status": "sent", "week": week_key, "sent_to": recipient, "schedule": _get_schedule_config()}, 200
+    return {"ok": True, "status": "sent", "week": week_key, "sent_to": recipients, "schedule": _get_schedule_config()}, 200
 
 
 @bp.get("/reports/weekly")
@@ -156,42 +219,40 @@ def send_owner_weekly_email():
     data = request.get_json(silent=True) or {}
     week_key = (data.get("week") or "current")
 
-    recipient = _get_setting("owner_report_email", "")
-    if not recipient:
+    recipients = _weekly_recipients()
+    if not recipients:
         return jsonify({"error": "owner_report_email_not_set"}), 400
 
     payload = _build_report_payload(week_key)
-    body_text = render_owner_weekly_email_text(payload)
 
     try:
-        _send_email_message(week_key, recipient, body_text)
+        _send_email_message(week_key, recipients, payload)
     except RuntimeError as exc:
         if str(exc) == "smtp_not_configured":
             return jsonify({"error": "smtp_not_configured"}), 400
         raise
 
-    return jsonify({"ok": True, "sent_to": recipient, "week": week_key})
+    return jsonify({"ok": True, "sent_to": recipients, "week": week_key})
 
 
 @bp.post("/reports/test-email")
 @role_required("manager")
 def send_owner_test_email():
-    recipient = _get_setting("owner_report_email", "")
-    if not recipient:
+    recipients = _weekly_recipients()
+    if not recipients:
         return jsonify({"error": "owner_report_email_not_set"}), 400
 
     week_key = "test"
     payload = _build_report_payload(week_key)
-    body_text = render_owner_weekly_email_text(payload)
 
     try:
-        _send_email_message(week_key, recipient, body_text)
+        _send_email_message(week_key, recipients, payload)
     except RuntimeError as exc:
         if str(exc) == "smtp_not_configured":
             return jsonify({"error": "smtp_not_configured"}), 400
         raise
 
-    return jsonify({"ok": True, "sent_to": recipient, "week": week_key, "test": True})
+    return jsonify({"ok": True, "sent_to": recipients, "week": week_key, "test": True})
 
 
 @bp.get("/reports/weekly/schedule")

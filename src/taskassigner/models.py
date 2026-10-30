@@ -61,11 +61,24 @@ class UserJobCode(db.Model):
     job_code_id = db.Column(db.Integer, db.ForeignKey("job_codes.id"), primary_key=True)
 
 
+class TaskExclusion(db.Model):
+    __tablename__ = "task_exclusions"
+    __table_args__ = (db.UniqueConstraint("user_id", "task_template_id", name="uq_task_exclusion_user_task"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    task_template_id = db.Column(db.Integer, db.ForeignKey("task_templates.id"), nullable=False, index=True)
+
+    user = db.relationship("User")
+    task_template = db.relationship("TaskTemplate")
+
+
 class TaskTemplate(TimestampMixin, db.Model):
     __tablename__ = "task_templates"
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
+    master_list_number = db.Column(db.Integer, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     responsible_job_code_id = db.Column(db.Integer, db.ForeignKey("job_codes.id"), nullable=False)
     weight = db.Column(db.Integer, nullable=True)
@@ -108,6 +121,7 @@ class TaskCompletion(TimestampMixin, db.Model):
     )
     completed_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     completed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completion_status = db.Column(db.String(20), nullable=False, default="completed")
     completion_source = db.Column(db.String(32), nullable=False, default="crew_self")
     manager_reason = db.Column(db.String(500), nullable=True)
     manager_confirmed_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)

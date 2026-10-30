@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero"><p class="eyebrow">Manager · {{ week }}</p><h1>{{ title }}</h1><p class="muted">Use the existing workflow action below when you are ready to change state.</p></section>
+<section class="card panel">
+  {% if rows %}
+  <div class="table-wrap"><table><thead><tr><th>Assignment</th><th>Task template</th><th>Assignee</th><th>Source</th></tr></thead><tbody>
+  {% for row in rows %}<tr><td>#{{ row.assignment_item_id }}</td><td>{{ row.task_template_id }}</td><td>{{ row.assignee_user_id }}</td><td><span class="badge">{{ row.source|default('generated') }}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<p class="empty">No rows need review on this step.</p>{% endif %}
+  <a class="button" href="{{ action }}">Open workflow endpoint</a>
+</section>
+{% endblock %}

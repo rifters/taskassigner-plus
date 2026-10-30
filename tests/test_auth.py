@@ -85,9 +85,11 @@ def test_auth_rate_limit_triggers(client):
 
 
 def test_password_reset_request_and_confirm_for_privileged_target(client):
+    login = client.post("/auth/login-password", json={"name": "eric", "password": "pass123"})
+    assert login.status_code == 200
     req = client.post(
         "/auth/reset-password/request",
-        json={"actor_name": "eric", "target_name": "lead"},
+        json={"actor_name": "not-eric", "target_name": "lead"},
     )
     assert req.status_code == 200
     token = req.json["reset_token"]
@@ -106,18 +108,22 @@ def test_password_reset_request_and_confirm_for_privileged_target(client):
 
 
 def test_password_reset_request_rejects_crew_target(client):
+    login = client.post("/auth/login-password", json={"name": "eric", "password": "pass123"})
+    assert login.status_code == 200
     req = client.post(
         "/auth/reset-password/request",
-        json={"actor_name": "eric", "target_name": "alice"},
+        json={"actor_name": "not-eric", "target_name": "alice"},
     )
     assert req.status_code == 400
     assert req.json["error"] == "target_invalid"
 
 
 def test_password_reset_token_cannot_be_reused(client):
+    login = client.post("/auth/login-password", json={"name": "eric", "password": "pass123"})
+    assert login.status_code == 200
     req = client.post(
         "/auth/reset-password/request",
-        json={"actor_name": "eric", "target_name": "owner"},
+        json={"actor_name": "not-eric", "target_name": "owner"},
     )
     token = req.json["reset_token"]
 
@@ -133,3 +139,39 @@ def test_password_reset_token_cannot_be_reused(client):
     )
     assert again.status_code == 400
     assert again.json["error"] == "token_already_used"
+
+
+def test_password_reset_request_requires_authenticated_manager(client):
+    anonymous = client.post(
+        "/auth/reset-password/request",
+        json={"actor_name": "eric", "target_name": "lead"},
+    )
+    assert anonymous.status_code in (401, 302)
+
+    crew_login = client.post("/auth/login-pin", json={"name": "alice", "pin": "1234"})
+    assert crew_login.status_code == 200
+    crew_attempt = client.post(
+        "/auth/reset-password/request",
+        json={"actor_name": "eric", "target_name": "lead"},
+    )
+    assert crew_attempt.status_code == 403
+
+
+def test_reset_pin_requires_authenticated_manager_and_ignores_actor_name(client):
+    anonymous = client.post(
+        "/auth/reset-pin",
+        json={"actor_name": "eric", "target_name": "alice", "new_pin": "5678"},
+    )
+    assert anonymous.status_code in (401, 302)
+
+    login = client.post("/auth/login-password", json={"name": "eric", "password": "pass123"})
+    assert login.status_code == 200
+    forged = client.post(
+        "/auth/reset-pin",
+        json={"actor_name": "not-eric", "target_name": "alice", "new_pin": "5678"},
+    )
+    assert forged.status_code == 200
+
+    client.post("/auth/logout")
+    crew_login = client.post("/auth/login-pin", json={"name": "alice", "pin": "5678"})
+    assert crew_login.status_code == 200

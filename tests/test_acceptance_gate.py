@@ -84,6 +84,25 @@ def test_lockout_after_threshold(client):
     assert res.status_code == 429
 
 
+def test_production_config_rejects_demo_mode_or_default_secret():
+    class UnsafeDemoConfig:
+        ENVIRONMENT = "production"
+        DEMO_MODE = True
+        SECRET_KEY = "real-secret-placeholder"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    with pytest.raises(RuntimeError, match="demo_mode_must_be_disabled_in_production"):
+        create_app(UnsafeDemoConfig)
+
+    class UnsafeSecretConfig(UnsafeDemoConfig):
+        DEMO_MODE = False
+        SECRET_KEY = "dev-change-me"
+
+    with pytest.raises(RuntimeError, match="production_secret_key_required"):
+        create_app(UnsafeSecretConfig)
+
+
 def test_manager_task_filters_support_job_code_person_task_week(client):
     login_manager(client)
     res = client.get("/api/reports/task?week=2026-W30&job_code=1&person=4&task=1")

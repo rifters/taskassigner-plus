@@ -5,6 +5,8 @@ from datetime import timedelta
 
 
 class Config:
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+    DEMO_MODE = os.getenv("DEMO_MODE", "true" if ENVIRONMENT == "development" else "false").lower() == "true"
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///taskassigner.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False

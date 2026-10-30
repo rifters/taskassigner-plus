@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Completion statistics · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Manager workspace</p>
+  <h1>Completion statistics</h1>
+  <p class="muted">Review completed and not-completed assignments over a selected date range.</p>
+</section>
+<section class="card panel">
+  <form method="get" class="form-grid">
+    <label>From <input type="date" name="start" value="{{ start }}" required></label>
+    <label>Through <input type="date" name="end" value="{{ end }}" required></label>
+    <button class="button" type="submit">Update report</button>
+  </form>
+  <p class="muted">Company weeks are Thursday through Wednesday. The default range is the last 90 days.</p>
+</section>
+<section class="grid grid-4">
+  <div class="card panel"><p class="eyebrow">Assigned</p><strong>{{ report.summary.assigned }}</strong></div>
+  <div class="card panel"><p class="eyebrow">Completed</p><strong>{{ report.summary.completed }}</strong></div>
+  <div class="card panel"><p class="eyebrow">Not completed</p><strong>{{ report.summary.not_completed }}</strong></div>
+  <div class="card panel"><p class="eyebrow">Completion rate</p><strong>{{ report.summary.completion_pct }}%</strong></div>
+</section>
+<section class="card panel">
+  <h2>Top 10 people with lowest completion rate</h2>
+  {% if report.lowest_people %}<div class="table-wrap"><table><thead><tr><th>Person</th><th>Assigned</th><th>Completed</th><th>Not completed</th><th>Rate</th></tr></thead><tbody>
+  {% for row in report.lowest_people %}<tr><td>{{ row.name }}</td><td>{{ row.assigned }}</td><td>{{ row.completed }}</td><td>{{ row.not_completed }}</td><td>{{ row.completion_pct }}%</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted">No assignment data in this range.</p>{% endif %}
+</section>
+<section class="card panel">
+  <h2>Top 5 people assigned tasks they never finished</h2>
+  {% if report.never_finished_people %}<div class="table-wrap"><table><thead><tr><th>Person</th><th>Assigned</th><th>Not completed</th></tr></thead><tbody>
+  {% for row in report.never_finished_people %}<tr><td>{{ row.name }}</td><td>{{ row.assigned }}</td><td>{{ row.not_completed }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted">No people with zero completed assignments in this range.</p>{% endif %}
+</section>
+<section class="card panel">
+  <h2>Top 10 tasks with lowest completion rate</h2>
+  {% if report.lowest_tasks %}<div class="table-wrap"><table><thead><tr><th>Task</th><th>Assigned</th><th>Completed</th><th>Not completed</th><th>Rate</th><th>Detail</th></tr></thead><tbody>
+  {% for task in report.lowest_tasks %}<tr><td>{{ task.task_title }}</td><td>{{ task.assigned }}</td><td>{{ task.completed }}</td><td>{{ task.not_completed }}</td><td>{{ task.completion_pct }}%</td><td><details><summary>View</summary><ul>{% for person in task.details %}<li>{{ person.assignee_name }} — {{ person.completed }}/{{ person.assigned }} complete{% if person.not_completed %}; {{ person.not_completed }} not completed{% endif %}</li>{% endfor %}</ul></details></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted">No task data in this range.</p>{% endif %}
+</section>
+{% endblock %}

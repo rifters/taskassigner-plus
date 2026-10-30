@@ -54,6 +54,7 @@ External-facing (untrusted users). Security, authorization, abuse prevention, an
 8. Manager confirms completions as separate state when needed.
 9. Manager/owner review person-centric + task-centric consistency reports.
 10. Owner receives automated weekly summary email.
+11. Manager/crew/owner workflows are visually usable in browser via lightweight server-rendered pages.
 
 ---
 
@@ -88,12 +89,13 @@ External-facing (untrusted users). Security, authorization, abuse prevention, an
 - Manager on-behalf completion requires mandatory reason and audit trace.
 - Crew history view is limited to last 4 weeks in v1.
 - v1 is single-tenant with future tenantization path.
+- Sprint 003 introduces a lightweight visual UI shell without introducing a frontend framework/build pipeline.
 
 ---
 
 ## Out of Scope (v1 / first implementation sprint)
 
-- Schedule import from Altametrics PDF tables
+- Initial schedule detection from Harri PDF exports: determine whether each person works on a given day; time windows are deferred
 - Task weighting/difficulty behavior (schema extensibility only)
 - Multi-location support
 - Native mobile app
@@ -115,6 +117,6 @@ External-facing (untrusted users). Security, authorization, abuse prevention, an
 
 ## Deferred / Unknown
 
-- Altametrics currently only provides PDF print tables; no direct CSV export.
+- Harri currently appears to provide PDF schedule output, which may be sufficient for initial day-level work detection with manual review. Direct CSV/API export, schema, stable identifiers, and access method remain unknown for future time-availability rules and analytics.
 - Task weighting direction chosen for future: hybrid (weight + estimated minutes), deferred.
 - No formal external compliance framework selected yet; internal-policy handling in effect.

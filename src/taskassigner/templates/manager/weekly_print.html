@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Printable task list · {{ week_key }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="print-page">
+  <main class="page">
+    <header class="print-header">
+      <p class="eyebrow">TaskAssigner+ paper trail</p>
+      <h1>Task list · {{ week_key }}</h1>
+      <p class="muted">Check each task as completed. Each person signs after their assigned list.</p>
+    </header>
+    {% for job_code, people in groups.items() %}
+    <section class="print-job-code">
+      <h2>{{ job_code }}</h2>
+      {% for person_name, payload in people.items() %}
+      <article class="print-person">
+        <h3>{{ person_name }}</h3>
+        <ul class="print-tasks">
+          {% for task in payload.tasks %}<li><span class="print-checkbox">□</span>{% if task.master_list_number %}<strong>#{{ task.master_list_number }}</strong> {% endif %}{{ task.title }}</li>{% endfor %}
+        </ul>
+        <p class="signature-line">Signature: ____________________________________ &nbsp; Date: ______________</p>
+      </article>
+      {% endfor %}
+    </section>
+    {% else %}<p class="empty">No posted assignments for this week.</p>{% endfor %}
+  </main>
+  <script>window.addEventListener('load', function () { window.print(); });</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Sprint 005 Acceptance — Crew Workflow
+
+- [x] A local demo crew member can authenticate through the browser PIN flow.
+- [x] Crew can view posted assignments in the browser and sees only their own.
+- [x] A crew member linked to two job codes sees both grouped sections.
+- [x] Crew groups are grouped by responsible job code and expanded by default.
+- [x] Multiple assignments per person are visible and usable, including multiple tasks in one pool.
+- [x] Each displayed task includes job-code context.
+- [x] Crew can complete an assignment and add a write-once note without breaking existing behavior.
+- [x] Existing bounded completion history remains available where defined.
+- [x] Manager weekly review is grouped by job code and expanded by default.
+- [x] Manager review retains fairness counts and reassignment controls.
+- [x] People-page edit UI can add, remove, and clear per-person task exclusions.
+- [x] Exclusions use task-template IDs and remain correct after a task title changes.
+- [x] Generation never assigns an excluded task to a person.
+- [x] Generation never assigns outside responsible job-code membership.
+- [x] API reassignment rejects wrong-job-code and excluded targets server-side.
+- [x] Browser reassignment rejects the same invalid targets server-side.
+- [x] No eligible target produces an explicit manager-visible unassigned/warning state.
+- [x] Demo seed/reset is guarded, deterministic, idempotent, and does not duplicate exclusions.
+- [x] Existing API contracts and the full test suite remain green.
+- [x] No PINs, hashes, secrets, or credentials appear in pages or logs.
+- [x] Deferred schedule and availability scope remains unimplemented.

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Owner reports · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero"><p class="eyebrow">Owner reporting</p><h1>Weekly productivity</h1><span class="badge">Read-only</span></section>
+<section class="card panel"><h2>By person</h2><div class="table-wrap"><table><thead><tr><th>Person</th><th>Assigned</th><th>Completed</th><th>Completion</th></tr></thead><tbody>{% for row in person_rows %}<tr><td>{{ row.name }}</td><td>{{ row.assigned }}</td><td>{{ row.completed }}</td><td>{{ row.completion_pct }}%</td></tr>{% else %}<tr><td colspan="4" class="empty">No report data yet.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="card panel"><h2>By task</h2><div class="table-wrap"><table><thead><tr><th>Task</th><th>Assignee</th><th>Completion</th><th>Consistency spread</th></tr></thead><tbody>{% for row in task_rows %}<tr><td>{{ row.task_title }}</td><td>{{ row.assignee_name }}</td><td>{{ row.completion_pct }}%</td><td>{{ row.consistency_spread_pct }}%</td></tr>{% else %}<tr><td colspan="4" class="empty">No task data yet.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

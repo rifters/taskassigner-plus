@@ -93,8 +93,179 @@
 ### Remaining/partial to close explicitly
 - None for Sprint 002 implementation scope.
 
-## Builder Notes for Architect
+## Sprint 003 Closeout — UI Shell + Balanced UX/Ops
 
-- Sprint 002 closed with acceptance-mapped evidence and status/state/briefing sync complete.
-- Implementation stayed within approved sprint boundary; deferred items remain deferred by scope guard.
-- Suggested next planning focus: Sprint 003 prioritization (UI polish vs ops hardening) with current workflow baseline preserved.
+### Where things stand
+
+TaskAssigner+ now has browser-rendered manager, crew, and owner workflows while retaining the existing JSON/API contracts for integrations and tests.
+
+### Delivered
+
+- Shared server-rendered layout and responsive CSS under `src/taskassigner/templates/` and `src/taskassigner/static/`.
+- Manager workflow home plus generate, draft, post, and completion review pages.
+- Crew task page with completion affordances, four-week history context, and visible write-once note guidance.
+- Owner weekly report page with person-centric and task-centric tables, explicitly read-only.
+- Content negotiation keeps existing JSON responses for API/test clients and renders HTML for browser requests.
+- Added rendered-page smoke and cross-role authorization tests.
+
+### Verification evidence
+
+- Focused: `python -m pytest tests/test_workflow_pages.py -q` → **10 passed**.
+- Full: `python -m pytest tests -q` → **40 passed**, 5 existing SQLAlchemy deprecation warnings.
+- Acceptance file: all Sprint 003 criteria checked.
+
+### Scope guard
+
+No schedule-import engine, weighting behavior, multi-location support, frontend framework, or build pipeline was added.
+
+### Remaining technical debt
+
+- Existing SQLAlchemy `Query.get()` deprecation warnings remain from prior sprints; they do not fail the suite.
+
+## Sprint 004 Closeout — Manager Demo Foundation
+
+### Delivered
+
+- Browser manager login at `/auth/login` with rate-limit/lockout feedback and existing JSON auth preserved.
+- Local-only deterministic demo reset/seed via the dashboard and `scripts/reset_demo.py`.
+- Separate manager People, Job Codes, Task Templates, and Reports pages with shared navigation.
+- Manual create plus text import forms; edit/deactivate controls for setup records.
+- Guided/advanced weekly page with generate, fairness review, assignee edit with reason, and post actions.
+
+### Verification evidence
+
+- Focused: `python -m pytest tests/test_workflow_pages.py -q` → **13 passed**.
+- Full: `python -m pytest tests -q` → **43 passed**, 6 existing SQLAlchemy deprecation warnings.
+- Demo reset: `python scripts/reset_demo.py` → **DEMO_RESET_OK**.
+- HTTP smoke: `/auth/login` and `/health` → **200**.
+
+### Deferred by scope
+
+Crew/shift-lead/owner browser login, production reset controls, schedule importing, weighting behavior, multi-location support, and frontend build tooling remain deferred.
+
+## Sprint 005 Closeout — Crew Workflow
+
+### Where things stand
+
+TaskAssigner+ now completes the manager-to-crew loop: managers can constrain eligibility, post grouped work, and crew members can log in, work their own assignments across multiple job codes, complete tasks, and leave write-once notes.
+
+### Delivered
+
+- Normalized `TaskExclusion` records keyed by user and task-template ID.
+- Central eligibility checks applied to generation and API/browser reassignment.
+- People-page exclusion editor with multi-select add/remove and clear-all actions.
+- Browser crew PIN login at `/auth/login-crew`.
+- Crew task page with grouped, expanded-by-default job-code sections and working completion/note forms.
+- Manager weekly page with grouped, expanded-by-default review sections, eligible reassignment choices, and no-eligible warnings.
+- Demo seed/reset now includes a two-job-code crew member and a demonstrable exclusion.
+- Existing JSON contracts preserved.
+
+### Verification evidence
+
+- Focused: `python -m pytest tests/test_crew_workflow.py -q` → **4 passed**.
+- Regression: `python -m pytest tests/test_crew_workflow.py tests/test_workflow_pages.py -q` → **17 passed**.
+- Full: `python -m pytest tests -q` → **47 passed**, 11 existing SQLAlchemy deprecation warnings.
+- Demo reset: `python scripts/reset_demo.py` → **DEMO_RESET_OK**.
+- Compile and whitespace checks passed.
+- HTTP smoke: `/health` and `/auth/login-crew` → **200**.
+
+### Scope guard
+
+No schedule importing, shift/day availability, capacity, assignment cap, new fairness algorithm, shift-lead/owner workflow, frontend framework, or build pipeline was added.
+
+## Sprint 006 Closeout — Randomized Generation and Paper Trail
+
+### Delivered
+
+- Double-randomized active task and eligible-person ordering with balanced per-job-code assignment counts.
+- Immediate previous posted-week repeat avoidance with eligible fallback behavior.
+- Confirmed full draft regeneration before posting; generation locked after posting.
+- Eligibility-preserving posted individual edits with audit logging.
+- Optional positive `master_list_number` on task templates, shown in manager/crew identity views and print output.
+- Browser print view grouped by job code, then person, with checkboxes and per-person signature space.
+
+### Verification evidence
+
+- Focused: `python -m pytest tests/test_sprint006.py -q` → **5 passed**.
+- Full: `python -m pytest tests -q` → **54 passed**, 13 existing SQLAlchemy deprecation warnings.
+- Demo reset: `python scripts/reset_demo.py` → **DEMO_RESET_OK**.
+- Compile, whitespace, and HTTP smoke checks passed (`/health`, `/auth/login-crew`, and posted-week print route returned `200`).
+- Sprint 006 acceptance file: all criteria checked.
+
+### Deferred by scope
+
+Full numbered text/CSV master-list import, schedule importing, availability/capacity rules, and custom PDF generation remain deferred.
+
+## Sprint 007 Closeout — Numbered Master Lists
+
+### Where things stand
+
+Managers can now maintain stable numbered task master lists by job code without silently renaming, deleting, deactivating, or renumbering existing tasks.
+
+### Delivered
+
+- Numbered TXT imports scoped to a selected job code, including file upload and paste workflows.
+- Numbered CSV imports with selected-job-code scope or row-level `job_code` for combined files.
+- Consecutive-number validation per job-code list with review messages for gaps, duplicates, leading zeroes, malformed rows, and title mismatches.
+- Partial-success application of valid rows while preserving review/error rows for manual correction.
+- CSV exact-match notes/status synchronization and TXT exact-match notes/status preservation.
+- Legacy unnumbered-task matching with explicit manager confirmation before attaching a number.
+- Combined CSV export containing active and inactive tasks with job code, number, title, notes, and active status.
+- Active-only, per-job-code TXT export containing numbered titles only.
+- Manager authorization, CSRF-protected browser forms, audit events, and backwards-compatible legacy imports.
+
+### Verification evidence
+
+- Focused: `python -m pytest tests/test_imports.py tests/test_sprint007.py -q` → **16 passed**.
+- Full: `python -m pytest tests -q` → **68 passed**, 15 existing SQLAlchemy deprecation warnings.
+- Demo reset: `python scripts/reset_demo.py` → **DEMO_RESET_OK**.
+- Compile and whitespace checks passed.
+- HTTP smoke: `/health`, `/auth/login-crew`, and combined CSV export returned **200**.
+- Sprint 007 acceptance file: all criteria checked.
+
+### Deferred by scope
+
+Schedule importing, availability/capacity rules, automatic omission deactivation, custom PDF generation, frontend framework/build tooling, and unrelated assignment redesign remain deferred.
+
+## Sprint 008 Closeout — Manager Email Reporting
+
+### Delivered
+
+- Weekly multipart email with HTML summary, plain-text fallback, and assignment-level CSV attachment.
+- Recipient resolution for active managers and owners with valid email addresses, excluding crew, shift leads, inactive users, invalid addresses, and duplicates.
+- Thursday–Wednesday range in the subject and report body.
+- Overall totals, completion-source counts, lowest-rate people/tasks, and never-finished people in the summary.
+- Manual, scheduled, and test sends share the same recipient and rendering path; legacy owner recipient setting remains a fallback.
+
+### Verification evidence
+
+- Owner email tests: **10 passed**.
+- Full: `python -m pytest tests -q` → **81 passed**, 16 existing SQLAlchemy deprecation warnings.
+- Compile and whitespace checks passed.
+
+### Deferred by scope
+
+Custom PDF generation, employee/crew recipients, and report-specific recipient groups remain deferred.
+
+## Sprint 009 Progress — Controlled Pilot Readiness
+
+### Where things stand
+
+Pilot-readiness hardening is underway. The first security blocker is closed and the operational procedures are documented, but the project is not yet approved for a real pilot.
+
+### Delivered and verified
+
+- Credential-management reset routes now require an authenticated manager session; submitted `actor_name` no longer grants authorization.
+- Auth/CSRF regression coverage includes anonymous, unauthorized, forged-actor, and authorized paths.
+- Production startup rejects enabled demo mode and the default development secret.
+- Controlled pilot runbook added with backup, restore, monitoring, scheduler, fallback, and go/no-go procedures.
+- Separate-database SQLite backup/restore drill passed with integrity and record checks.
+- Local `/health` returned `{"ok": true}` and unauthenticated `/manager` returned the expected redirect.
+- Full verification: **84 passed**, compilation passed, and `git diff --check` passed.
+
+### Remaining before closeout
+
+- Configure and verify the real pilot host, backup retention, monitoring, alerts, SMTP, and scheduler ownership when the host PC is available.
+- Import and reconcile realistic pilot data without storing credentials in project artifacts.
+- Execute the complete Thursday–Wednesday manual rehearsal and record the result.
+- Obtain an explicit GO, GO WITH CONDITIONS, or NO-GO decision.

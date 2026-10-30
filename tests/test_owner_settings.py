@@ -2,7 +2,9 @@ import pytest
 
 from taskassigner.app import create_app
 from taskassigner.extensions import db
+from taskassigner import email_report
 from taskassigner.models import User
+from taskassigner.routes import owner as owner_routes
 
 
 @pytest.fixture
@@ -146,3 +148,69 @@ def test_weekly_schedule_run_requires_owner_email_and_smtp(client):
     res2 = client.post("/api/owner/reports/weekly/run-scheduled", json={"force": True, "dry_run": True})
     assert res2.status_code == 400
     assert res2.json["error"] == "smtp_not_configured"
+
+
+def test_weekly_recipients_include_active_managers_and_owners_only(app):
+    with app.app_context():
+        db.session.add_all([
+            User(name="manager2", role="manager", email="manager@example.com", active=True),
+            User(name="owner2", role="owner", email="owner@example.com", active=True),
+            User(name="crew", role="crew", email="crew@example.com", active=True),
+            User(name="lead", role="shift_lead", email="lead@example.com", active=True),
+            User(name="inactive", role="manager", email="inactive@example.com", active=False),
+            User(name="bad-email", role="manager", email="not-an-email", active=True),
+        ])
+        db.session.commit()
+        recipients = email_report.resolve_weekly_report_recipients(User.query.all(), "owner@example.com")
+    assert recipients == ["manager@example.com", "owner@example.com"]
+
+
+def test_weekly_csv_contains_assignment_level_completion_fields():
+    csv_text = email_report.render_weekly_report_csv({
+        "week": "2026-W36",
+        "assignment_rows": [{
+            "week": "2026-W36", "task_number": 4, "task_title": "Clean Grill",
+            "job_code": "Cooks", "assignee_name": "Alice", "completion_status": "completed",
+            "completion_source": "crew_self", "completed_by_name": "Alice",
+            "manager_reason": "", "completed_at": "2026-09-09T20:00:00",
+        }],
+    })
+    assert "task_number,task_title" in csv_text
+    assert "Clean Grill" in csv_text
+    assert "crew_self" in csv_text
+
+
+def test_weekly_email_is_multipart_with_csv_attachment(app, monkeypatch):
+    captured = {}
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def starttls(self):
+            pass
+
+        def send_message(self, message):
+            captured["message"] = message
+
+    monkeypatch.setattr(owner_routes.smtplib, "SMTP", FakeSMTP)
+    with app.app_context():
+        app.config.update(SMTP_HOST="smtp.example.com", EMAIL_FROM="reports@example.com")
+        owner_routes._send_email_message("2026-W36", ["manager@example.com", "owner@example.com"], {
+            "week": "2026-W36", "week_label": "Thursday, September 3, 2026 through Wednesday, September 9, 2026",
+            "summary": {"assigned": 1, "completed": 1, "not_completed": 0, "completion_pct": 100,
+                        "crew_self": 1, "manager_on_behalf": 0},
+            "lowest_people": [], "never_finished_people": [], "lowest_tasks": [],
+            "assignment_rows": [{"task_number": 1, "task_title": "Clean Grill"}],
+        })
+    message = captured["message"]
+    assert message["To"] == "manager@example.com, owner@example.com"
+    assert "September 3" in message["Subject"]
+    assert message.is_multipart()
+    assert any(part.get_filename() == "taskassigner-weekly-report-2026-W36.csv" for part in message.iter_attachments())

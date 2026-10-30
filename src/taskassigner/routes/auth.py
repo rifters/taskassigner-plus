@@ -3,14 +3,60 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, request, session
-from flask_login import login_user, logout_user
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, session, url_for
+from flask_login import current_user, login_user, logout_user
 
 from ..extensions import db
 from ..models import PasswordResetToken, User
-from ..security import is_locked_out, is_rate_limited, record_auth_attempt
+from ..security import is_locked_out, is_rate_limited, record_auth_attempt, role_required
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
+
+
+@bp.get("/login")
+def login_page():
+    return render_template("auth/login.html", error=None)
+
+
+@bp.post("/login")
+def browser_login():
+    identifier = (request.form.get("name") or "").strip()
+    password = request.form.get("password") or ""
+    if not identifier or not password:
+        return render_template("auth/login.html", error="Enter both username and password."), 400
+    if is_rate_limited(identifier) or is_locked_out(identifier):
+        return render_template("auth/login.html", error="Login temporarily locked. Try again later."), 429
+
+    user = User.query.filter_by(name=identifier, active=True).first()
+    if not user or not user.check_password(password) or user.role != "manager":
+        record_auth_attempt(identifier, False)
+        return render_template("auth/login.html", error="Invalid manager credentials."), 401
+
+    login_user(user, remember=False)
+    _apply_session_ttl(user.role)
+    record_auth_attempt(identifier, True)
+    return redirect(url_for("manage.manager_home"))
+
+
+@bp.get("/login-crew")
+def crew_login_page():
+    return render_template("auth/crew_login.html", error=None)
+
+
+@bp.post("/login-crew")
+def browser_crew_login():
+    identifier = (request.form.get("name") or "").strip()
+    pin = str(request.form.get("pin") or "").strip()
+    if not identifier or not pin:
+        return render_template("auth/crew_login.html", error="Enter both name and PIN."), 400
+    user = User.query.filter_by(name=identifier, active=True, role="crew").first()
+    if not user or not user.check_pin(pin):
+        record_auth_attempt(identifier, False)
+        return render_template("auth/crew_login.html", error="Invalid crew credentials."), 401
+    login_user(user, remember=False)
+    _apply_session_ttl(user.role)
+    record_auth_attempt(identifier, True)
+    return redirect("/crew/tasks")
 
 
 def _apply_session_ttl(role: str) -> None:
@@ -97,7 +143,7 @@ def pin_login():
     return jsonify({"ok": True, "role": user.role, "session_ttl_hours": session["session_ttl_hours"]})
 
 
-@bp.post("/logout")
+@bp.route("/logout", methods=["GET", "POST"])
 def logout():
     logout_user()
     session.clear()
@@ -105,17 +151,13 @@ def logout():
 
 
 @bp.post("/reset-pin")
+@role_required("manager")
 def reset_pin():
     data = request.get_json(force=True)
-    actor_name = data.get("actor_name")
     target_name = data.get("target_name")
     new_pin = str(data.get("new_pin") or "").strip()
-    if not actor_name or not target_name or not new_pin:
+    if not target_name or not new_pin:
         return jsonify({"error": "missing_fields"}), 400
-
-    actor = User.query.filter_by(name=actor_name, active=True).first()
-    if not actor or actor.role != "manager":
-        return jsonify({"error": "forbidden"}), 403
 
     target = User.query.filter_by(name=target_name, active=True).first()
     if not target or target.role != "crew":
@@ -127,22 +169,18 @@ def reset_pin():
 
 
 @bp.post("/reset-password/request")
+@role_required("manager")
 def reset_password_request():
     data = request.get_json(force=True)
-    actor_name = (data.get("actor_name") or "").strip()
     target_name = (data.get("target_name") or "").strip()
-    if not actor_name or not target_name:
+    if not target_name:
         return jsonify({"error": "missing_fields"}), 400
-
-    actor = User.query.filter_by(name=actor_name, active=True).first()
-    if not actor or actor.role != "manager":
-        return jsonify({"error": "forbidden"}), 403
 
     target = User.query.filter_by(name=target_name, active=True).first()
     if not target or target.role not in {"shift_lead", "manager", "owner"}:
         return jsonify({"error": "target_invalid"}), 400
 
-    row = _issue_password_reset_token(target, actor)
+    row = _issue_password_reset_token(target, current_user)
     return jsonify(
         {
             "ok": True,

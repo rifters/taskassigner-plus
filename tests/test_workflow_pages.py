@@ -1,8 +1,11 @@
+from datetime import date, timedelta
+
 import pytest
 
 from taskassigner.app import create_app
 from taskassigner.extensions import db
 from taskassigner.models import AssignmentItem, AssignmentRun, JobCode, TaskTemplate, TaskCompletion, TaskNote, User
+from taskassigner.routes import owner as owner_routes
 
 
 @pytest.fixture
@@ -14,6 +17,7 @@ def app():
         LOCKOUT_THRESHOLD = 5
         LOCKOUT_MINUTES = 15
         AUTH_RATE_LIMIT_PER_MINUTE = 5
+        DEMO_MODE = True
 
     app = create_app(TestConfig)
     app.config["WTF_CSRF_ENABLED"] = False
@@ -141,6 +145,100 @@ def test_manager_completions_page_includes_completion_source_context(client):
     assert all("completion_source" in r for r in res.json["rows"])
 
 
+def test_post_assignments_link_handles_already_posted_week(client):
+    _login_manager(client)
+    response = client.get("/manager/weeks/2026-W28/post", headers={"Accept": "text/html"})
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/manager/weeks/2026-W28")
+
+
+def test_manager_can_confirm_all_completed_items_from_review_page(client, app):
+    _login_manager(client)
+    page = client.get("/manager/weeks/2026-W28/completions", headers={"Accept": "text/html"})
+    assert page.status_code == 200
+    assert b"Confirm all completed" in page.data
+    assert b"/manager/weeks/2026-W28/completions/confirm-all" in page.data
+
+    confirmed = client.post(
+        "/manager/weeks/2026-W28/completions/confirm-all",
+        headers={"Accept": "text/html"},
+    )
+    assert confirmed.status_code == 302
+    assert confirmed.headers["Location"].endswith("/manager/weeks/2026-W28/completions")
+
+    with app.app_context():
+        completion = TaskCompletion.query.filter_by(assignment_item_id=1).first()
+        assert completion.manager_confirmed_by == 1
+        assert completion.manager_confirmed_at is not None
+
+
+def test_current_completions_finalize_prior_week_as_not_completed(client, app):
+    _login_manager(client)
+    today = date.today()
+    current_start = today - timedelta(days=(today.weekday() - 3) % 7)
+    iso_year, iso_week, _ = current_start.isocalendar()
+    current_key = f"{iso_year:04d}-W{iso_week:02d}"
+    with app.app_context():
+        manager = User.query.filter_by(name="eric").one()
+        db.session.add(AssignmentRun(week_key=current_key, status="posted", generated_by=manager.id))
+        db.session.commit()
+    page = client.get("/manager/weeks/current/completions", headers={"Accept": "text/html"})
+    assert page.status_code == 200
+    prior_page = client.get("/manager/weeks/2026-W28/completions", headers={"Accept": "text/html"})
+    assert b"Not completed" in prior_page.data
+
+    with app.app_context():
+        not_completed = TaskCompletion.query.filter_by(assignment_item_id=2).one()
+        assert not_completed.completion_status == "not_completed"
+        assert not_completed.completed_by == 1
+
+
+def test_reports_include_not_completed_counts(client):
+    _login_manager(client)
+    with client.application.app_context():
+        manager = User.query.filter_by(name="eric").one()
+        item = AssignmentItem.query.filter_by(id=2).one()
+        db.session.add(
+            TaskCompletion(
+                assignment_item_id=item.id,
+                completed_by=manager.id,
+                completion_status="not_completed",
+                completion_source="manager_week_close",
+            )
+        )
+        db.session.commit()
+    response = client.get("/api/reports/person?week=2026-W28")
+    assert response.status_code == 200
+    alice = next(row for row in response.json["rows"] if row["name"] == "alice")
+    bob = next(row for row in response.json["rows"] if row["name"] == "bob")
+    assert alice["completed"] == 1
+    assert alice["not_completed"] == 0
+    assert bob["completed"] == 0
+    assert bob["not_completed"] == 1
+
+
+def test_manager_completions_html_provides_on_behalf_form(client, app):
+    _login_manager(client)
+    page = client.get("/manager/weeks/2026-W28/completions", headers={"Accept": "text/html"})
+    assert page.status_code == 200
+    assert b"Complete on behalf" in page.data
+    assert b"/api/completions/2/manager-complete" in page.data
+
+    completed = client.post(
+        "/api/completions/2/manager-complete",
+        data={"reason": "Crew could not access the app."},
+        headers={"Accept": "text/html"},
+    )
+    assert completed.status_code == 302
+    assert completed.headers["Location"].endswith("/manager/weeks/2026-W28/completions")
+
+    with app.app_context():
+        completion = TaskCompletion.query.filter_by(assignment_item_id=2).first()
+        assert completion is not None
+        assert completion.completion_source == "manager_on_behalf"
+        assert completion.manager_reason == "Crew could not access the app."
+
+
 def test_manager_on_behalf_completion_requires_reason(client):
     _login_manager(client)
     res = client.post("/api/completions/2/manager-complete", json={"reason": ""})
@@ -214,3 +312,160 @@ def test_owner_reports_page_is_read_only(client):
     page = client.get("/owner/reports")
     assert page.status_code == 200
     assert page.json["read_only"] is True
+
+
+def test_manager_reports_dashboard_supports_date_range_and_rankings(client):
+    _login_manager(client)
+    with client.application.app_context():
+        manager = User.query.filter_by(name="eric").one()
+        db.session.add(TaskCompletion(
+            assignment_item_id=2,
+            completed_by=manager.id,
+            completion_status="not_completed",
+            completion_source="manager_week_close",
+        ))
+        db.session.commit()
+    api = client.get("/api/reports/summary?start=2026-06-01&end=2026-09-30")
+    assert api.status_code == 200
+    assert api.json["summary"]["assigned"] == 2
+    assert api.json["summary"]["completed"] == 1
+    assert api.json["summary"]["not_completed"] == 1
+    assert api.json["lowest_people"][0]["name"] == "bob"
+    assert api.json["lowest_tasks"][0]["task_title"] == "Stock Freezer"
+
+    page = client.get("/manager/reports?start=2026-06-01&end=2026-09-30", headers={"Accept": "text/html"})
+    assert page.status_code == 200
+    assert b"Top 10 people with lowest completion rate" in page.data
+    assert b"Top 10 tasks with lowest completion rate" in page.data
+    assert b"Stock Freezer" in page.data
+
+
+def test_weekly_email_payload_contains_posted_assignment_rows(client):
+    _login_manager(client)
+    with client.application.app_context():
+        payload = owner_routes._build_report_payload("2026-W28")
+    assert len(payload["assignment_rows"]) == 2
+    assert payload["assignment_rows"][0]["week"] == "2026-W28"
+    assert {row["completion_status"] for row in payload["assignment_rows"]} == {"completed", "open"}
+
+
+def test_rendered_role_pages_keep_json_contract_and_render_html(client):
+    _login_manager(client)
+    html = client.get("/manager", headers={"Accept": "text/html"})
+    assert html.status_code == 200
+    assert b"Weekly assignment workflow" in html.data
+    assert b"Generate" in html.data
+
+
+def test_manager_generate_flow_asks_for_assignment_week(client):
+    _login_manager(client)
+    home = client.get("/manager", headers={"Accept": "text/html"})
+    assert b"/manager/weeks/generate" in home.data
+
+    selection = client.get("/manager/weeks/generate", headers={"Accept": "text/html"})
+    assert selection.status_code == 200
+    assert b"Assignment week" in selection.data
+    assert b"Thursday through Wednesday" in selection.data
+
+    chosen = client.get(
+        "/manager/weeks/generate?week_start=2026-09-03",
+        headers={"Accept": "text/html"},
+    )
+    assert chosen.status_code == 302
+    assert chosen.headers["Location"].endswith("/manager/weeks/2026-W36/generate")
+
+    week_page = client.get("/manager/weeks/2026-W36", headers={"Accept": "text/html"})
+    assert b"Thu Sep 3, 2026" in week_page.data
+    assert b"Wed Sep 9, 2026" in week_page.data
+
+
+def test_manager_generate_flow_rejects_invalid_assignment_week(client):
+    _login_manager(client)
+    response = client.get(
+        "/manager/weeks/generate?week_start=2026-09-02",
+        headers={"Accept": "text/html"},
+    )
+    assert response.status_code == 400
+
+    draft = client.get("/manager/weeks/2026-W29/draft", headers={"Accept": "text/html"})
+    assert draft.status_code == 200
+    assert b"Review draft assignments" in draft.data
+
+    weekly = client.get("/manager/weeks/2026-W29", headers={"Accept": "text/html"})
+    assert b"Generated weeks" in weekly.data
+    assert b"2026-W28" in weekly.data
+    assert b"Posted" in weekly.data
+    assert b"/manager/weeks/2026-W28" in weekly.data
+
+    client.post("/auth/logout")
+    _login_crew(client, "alice")
+    crew = client.get("/crew/tasks", headers={"Accept": "text/html"})
+    assert crew.status_code == 200
+    assert b"write-once" in crew.data
+    assert b"Mark complete" in crew.data
+
+    client.post("/auth/logout")
+    _login_owner(client)
+    owner = client.get("/owner/reports", headers={"Accept": "text/html"})
+    assert owner.status_code == 200
+    assert b"Read-only" in owner.data
+
+
+def test_rendered_pages_preserve_role_guards(client):
+    _login_crew(client, "alice")
+    denied = client.get("/manager", headers={"Accept": "text/html"})
+    assert denied.status_code == 403
+
+    client.post("/auth/logout")
+    _login_owner(client)
+    denied = client.get("/crew/tasks", headers={"Accept": "text/html"})
+    assert denied.status_code == 403
+
+
+def test_manager_browser_login_and_demo_reset(client, app):
+    login_page = client.get("/auth/login")
+    assert login_page.status_code == 200
+    assert b"Local development demo only" in login_page.data
+
+    logged_in = client.post(
+        "/auth/login",
+        data={"name": "eric", "password": "pass123"},
+        headers={"Accept": "text/html"},
+    )
+    assert logged_in.status_code == 302
+    assert logged_in.headers["Location"].endswith("/manager")
+
+    reset = client.post("/manager/demo/reset", headers={"Accept": "text/html"})
+    assert reset.status_code == 200
+    assert b"Demo data reset" in reset.data
+
+    with app.app_context():
+        from taskassigner.demo_seed import DEMO_MANAGER_NAME
+
+        assert User.query.filter_by(name=DEMO_MANAGER_NAME, role="manager").count() == 1
+        assert JobCode.query.count() == 4
+        assert TaskTemplate.query.count() == 8
+
+
+def test_manager_setup_pages_render_and_create_from_forms(client):
+    _login_manager(client)
+    for path, marker in [("/manager/people", b"Add person"), ("/manager/job-codes", b"Add job code"), ("/manager/tasks", b"Add task template")]:
+        response = client.get(path, headers={"Accept": "text/html"})
+        assert response.status_code == 200
+        assert marker in response.data
+    assert client.post("/manager/job-codes", data={"name": "Dessert"}, headers={"Accept": "text/html"}).status_code == 302
+    assert client.post("/manager/tasks", data={"title": "Clean dessert station", "responsible_job_code_id": "1"}, headers={"Accept": "text/html"}).status_code == 302
+
+
+def test_manager_week_browser_flow(client):
+    _login_manager(client)
+    client.post("/manager/demo/reset", headers={"Accept": "text/html"})
+    generated = client.post("/manager/weeks/2026-W29/generate", headers={"Accept": "text/html"})
+    assert generated.status_code == 302
+    page = client.get("/manager/weeks/2026-W29", headers={"Accept": "text/html"})
+    assert page.status_code == 200
+    assert b"Review fairness" in page.data
+    assert b"Clean grill" in page.data
+    posted = client.post("/manager/weeks/2026-W29/post", headers={"Accept": "text/html"})
+    assert posted.status_code == 302
+    assert b"Posted" in client.get("/manager/weeks/2026-W29", headers={"Accept": "text/html"}).data

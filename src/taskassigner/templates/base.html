@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TaskAssigner+{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/manager">TaskAssigner+</a>
+    {% if current_user.is_authenticated and current_user.role == 'manager' %}<nav class="nav"><a href="/manager">Dashboard</a><a href="/manager/people">People</a><a href="/manager/job-codes">Job Codes</a><a href="/manager/tasks">Task Templates</a><a href="/manager/weeks/current/generate">Weekly Assignments</a><a href="/manager/reports">Reports</a></nav>{% endif %}
+    {% if current_user.is_authenticated %}<span class="context">{{ current_user.name }} · {{ current_user.role|replace('_', ' ')|title }}</span><a class="logout" href="/auth/logout">Sign out</a>{% endif %}
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

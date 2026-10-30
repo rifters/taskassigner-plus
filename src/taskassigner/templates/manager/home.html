@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Manager · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Manager workspace</p>
+  <h1>Weekly assignment workflow</h1>
+  <p class="muted">Move a week from draft to posted, then review completion.</p>
+  {% if demo_summary %}<p class="alert success">Demo data reset: {{ demo_summary.people }} people, {{ demo_summary.job_codes }} job codes, {{ demo_summary.task_templates }} task templates.</p>{% endif %}
+</section>
+<section class="card panel demo-panel"><h2>Local demo controls</h2><p class="muted">Restores the sample manager, people, job codes, and tasks. Development only.</p><form method="post" action="/manager/demo/reset"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button secondary" type="submit">Reset demo data</button></form></section>
+<div class="grid actions">
+  <a class="card action" href="{{ workflow.generate }}"><strong>Generate</strong><span>Create this week's draft</span></a>
+  <a class="card action" href="{{ workflow.draft }}"><strong>Review draft</strong><span>Check distribution and edits</span></a>
+  <a class="card action" href="{{ workflow.post }}"><strong>Post assignments</strong><span>Publish the reviewed week</span></a>
+  <a class="card action" href="{{ workflow.completion_review }}"><strong>Completions</strong><span>Track and confirm work</span></a>
+  <a class="card action" href="{{ workflow.reports }}"><strong>Statistics report</strong><span>Compare completion rates and trends</span></a>
+  <a class="card action" href="{{ workflow.schedule }}"><strong>Report schedule</strong><span>View weekly email settings</span></a>
+</div>
+{% endblock %}

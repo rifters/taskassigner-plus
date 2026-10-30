@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Weekly assignments · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Manager workflow</p>
+  <h1>Weekly assignments</h1>
+  <p class="muted">{% if run %}Review assignments · {% endif %}{{ week_label }} · Groups are organized by job code.</p>
+</section>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:1rem;align-items:start">
+  <main>
+    <section class="card panel">
+      <div class="split">
+        <div><h2>1. Generate draft</h2><p class="muted">Create one assignment per active task template using the eligible responsible job-code pool.</p></div>
+        {% if not run %}
+        <form method="post" action="/manager/weeks/{{ week_key }}/generate"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button" type="submit">Generate draft</button></form>
+        {% elif run.status == 'draft' %}
+        <form method="post" action="/manager/weeks/{{ week_key }}/regenerate" onsubmit="return confirm('Replace the entire current draft with a new randomized draft?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="true"><button class="button" type="submit">Regenerate draft</button></form>
+        {% else %}<span class="badge success">Generation locked</span>{% endif %}
+      </div>
+    </section>
+    {% if unassigned_tasks %}<section class="alert error"><strong>No eligible assignee:</strong> {% for task in unassigned_tasks %}{{ task.title }}{% if not loop.last %}, {% endif %}{% endfor %}</section>{% endif %}
+    {% if run %}
+    <section class="card panel">
+      <div class="split">
+        <div><h2>2. Review fairness</h2><p class="muted">{% if run.status == 'draft' %}Review draft assignments{% else %}Review posted assignments{% endif %} · {{ items|length }} assignments. All job-code groups are expanded.</p></div>
+        {% if run.status == 'draft' %}
+        <form method="post" action="/manager/weeks/{{ week_key }}/post" onsubmit="if (!confirm('Post this reviewed week?')) return false; this.elements.print.value = confirm('Would you like to print the task list?'); return true;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="print" value="false"><button class="button" type="submit">Post reviewed week</button></form>
+        {% else %}<span class="badge success">Posted</span><a class="button small" href="/manager/weeks/{{ week_key }}/print">Print task list</a>{% endif %}
+      </div>
+      {% for job_code, rows in groups.items() %}
+      <details open><summary><h3>{{ job_code }}</h3></summary>
+        <div class="table-wrap"><table><thead><tr><th>Task</th><th>Assignee</th><th>Change</th></tr></thead><tbody>
+        {% for item in rows %}<tr><td>{% if item.task.master_list_number %}#{{ item.task.master_list_number }} — {% endif %}{{ item.task.title }}<br><small>Job code: {{ job_code }}</small></td><td>{{ item.assignee.name }}</td><td>{% if run.status in ['draft', 'posted'] %}<form class="inline-form" method="post" action="/manager/weeks/{{ week_key }}/edit/{{ item.item.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="assignee_user_id">{% for person in item.eligible_people %}<option value="{{ person.id }}" {% if person.id == item.item.assignee_user_id %}selected{% endif %}>{{ person.name }}</option>{% endfor %}</select><input name="reason" placeholder="Reason (optional)"><button class="button small" type="submit">Save</button></form>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>
+      </details>
+      {% endfor %}
+    </section>
+    {% else %}<section class="card panel"><p class="muted">No draft yet. Generate the week to see assignments and fairness review.</p></section>{% endif %}
+  </main>
+  <aside class="card panel">
+    <h2>Generated weeks</h2>
+    <p class="muted">Open a week to review or modify its assignments.</p>
+    {% if generated_weeks %}
+    <nav aria-label="Generated assignment weeks">
+      {% for generated_week in generated_weeks %}
+      <a href="/manager/weeks/{{ generated_week.key }}" style="display:block;padding:.7rem 0;border-top:1px solid var(--line);{% if generated_week.key == week_key %}font-weight:700;{% endif %}"><strong>{{ generated_week.label }}</strong><br><small>{{ generated_week.key }} · {{ generated_week.status|capitalize }}</small></a>
+      {% endfor %}
+    </nav>
+    {% else %}<p class="muted">No generated weeks yet.</p>{% endif %}
+    <a class="button small" href="/manager/weeks/generate">Generate another week</a>
+  </aside>
+</div>
+{% endblock %}

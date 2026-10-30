@@ -39,6 +39,12 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    if app.config.get("ENVIRONMENT") == "production":
+        if app.config.get("DEMO_MODE", False):
+            raise RuntimeError("demo_mode_must_be_disabled_in_production")
+        if app.config.get("SECRET_KEY") in {None, "", "dev-change-me"}:
+            raise RuntimeError("production_secret_key_required")
+
     _configure_logging(app)
 
     db.init_app(app)
@@ -46,7 +52,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     login_manager.init_app(app)
     csrf.init_app(app)
 
-    login_manager.login_view = "auth.password_login"
+    login_manager.login_view = "auth.login_page"
 
     @login_manager.user_loader
     def load_user(user_id: str):
@@ -54,6 +60,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
 
     from .routes.auth import bp as auth_bp
     from .routes.manage import bp as manage_bp
+    from .routes.manager_week import bp as manager_week_bp
     from .routes.assignments import bp as assignments_bp
     from .routes.completions import bp as completions_bp
     from .routes.reports import bp as reports_bp
@@ -63,6 +70,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(manage_bp)
+    app.register_blueprint(manager_week_bp)
     app.register_blueprint(assignments_bp)
     app.register_blueprint(completions_bp)
     app.register_blueprint(reports_bp)

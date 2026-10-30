@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Choose assignment week · TaskAssigner+{% endblock %}
+{% block content %}
+<section class="hero"><p class="eyebrow">Manager workflow</p><h1>Choose assignment week</h1><p class="muted">Company assignment weeks run Thursday through Wednesday. Select the Thursday start date for the week you want to generate.</p></section>
+<section class="card panel">
+  <form method="get" action="/manager/weeks/generate">
+    <label for="week_start">Assignment week starts Thursday</label>
+    <input id="week_start" name="week_start" type="date" required>
+    <small class="muted">Choose a Thursday. The assignment range will be Thursday through the following Wednesday.</small>
+    <button class="button" type="submit">Continue to draft generation</button>
+  </form>
+</section>
+{% endblock %}

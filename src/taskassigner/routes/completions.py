@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, redirect, request
 from flask_login import current_user
 
 from ..audit import log_audit
 from ..extensions import db
-from ..models import AssignmentItem, TaskCompletion, TaskNote
+from ..models import AssignmentItem, AssignmentRun, TaskCompletion, TaskNote
 from ..security import role_required
 
 bp = Blueprint("completions", __name__, url_prefix="/api/completions")
@@ -37,6 +37,7 @@ def mark_complete(assignment_item_id: int):
     else:
         completion.completed_by = current_user.id
         completion.completed_at = datetime.utcnow()
+        completion.completion_status = "completed"
         completion.completion_source = "crew_self"
         completion.manager_reason = None
 
@@ -49,7 +50,7 @@ def mark_complete(assignment_item_id: int):
 @role_required("manager")
 def manager_complete(assignment_item_id: int):
     item = AssignmentItem.query.get_or_404(assignment_item_id)
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True) or request.form.to_dict()
     reason = (data.get("reason") or "").strip()
     if not reason:
         return jsonify({"error": "reason_required"}), 400
@@ -69,6 +70,7 @@ def manager_complete(assignment_item_id: int):
     else:
         completion.completed_by = current_user.id
         completion.completed_at = datetime.utcnow()
+        completion.completion_status = "completed"
         completion.completion_source = "manager_on_behalf"
         completion.manager_reason = reason
 
@@ -80,6 +82,9 @@ def manager_complete(assignment_item_id: int):
         str(item.id),
         {"assignee_user_id": item.assignee_user_id, "reason": reason},
     )
+    if request.form and "text/html" in request.accept_mimetypes:
+        run = db.session.get(AssignmentRun, item.run_id)
+        return redirect(f"/manager/weeks/{run.week_key}/completions")
     return jsonify({"ok": True})
 
 
@@ -124,7 +129,7 @@ def add_note(assignment_item_id: int):
 def confirm_complete(assignment_item_id: int):
     item = AssignmentItem.query.get_or_404(assignment_item_id)
     completion = TaskCompletion.query.filter_by(assignment_item_id=item.id).first()
-    if not completion:
+    if not completion or completion.completion_status != "completed":
         return jsonify({"error": "not_completed_yet"}), 400
 
     completion.manager_confirmed_by = current_user.id

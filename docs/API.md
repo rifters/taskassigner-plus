@@ -55,12 +55,16 @@ Expected payload modes:
 - `POST /api/completions/:assignment_item_id/mark-complete`
 - `POST /api/completions/:assignment_item_id/confirm` (manager/lead per policy)
 - `POST /api/completions/:assignment_item_id/manager-complete` (manager on-behalf completion; reason required)
+- Completion records retain an explicit `completion_status`: `completed` or `not_completed`. The prior posted Thursday–Wednesday week is finalized when the current-week completion review is opened; unfinished assignments are recorded as `not_completed` for reporting and can still be completed on behalf by a manager.
 - `POST /api/completions/:assignment_item_id/note` (crew incomplete-task note; write-once)
 
 ## Reports
 
 - `GET /api/reports/person?week=&job_code=&person=&from=&to=`
 - `GET /api/reports/task?week=&job_code=&task=&from=&to=`
+- `GET /api/reports/summary?start=&end=` (manager statistics dashboard data; defaults are applied by the manager page)
+- Person and task report rows include both `completed` and `not_completed` counts.
+- Summary data includes overall totals, task completion percentages, top 10 lowest-rate people, top 10 lowest-rate tasks, and the top 5 people with zero completed assignments. Task rows include assignee detail for drill-down views. Date ranges use Thursday company-week starts and posted runs only.
 
 ## Crew History
 
@@ -75,7 +79,9 @@ Expected payload modes:
 - `GET /api/owner/reports/weekly`
 - `GET /api/owner/settings/report-email`
 - `POST /api/owner/settings/report-email` (manager updates owner recipient)
-- `POST /api/owner/reports/weekly/send-email` (manager-triggered weekly send)
+- `POST /api/owner/reports/weekly/send-email`
+- Weekly email delivery targets active users with role `manager` or `owner` who have valid email addresses. If none are available, the legacy `owner_report_email` setting is used as a compatibility fallback.
+- Weekly email messages contain HTML and plain-text summaries plus a complete assignment-level CSV attachment. The existing owner route names are retained for API compatibility. (manager-triggered weekly send)
 - `POST /api/owner/reports/test-email` (manager-triggered SMTP connectivity/proof send)
 - `GET /api/owner/reports/weekly/schedule` (manager/owner reads weekly schedule config)
 - `POST /api/owner/reports/weekly/schedule` (manager writes schedule config: `enabled`,`weekday`,`hour_utc`,`minute_utc`)

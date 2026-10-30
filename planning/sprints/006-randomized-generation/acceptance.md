@@ -1,0 +1,30 @@
+# Sprint 006 Acceptance — Randomized Generation and Paper Trail
+
+- [x] Active tasks are processed in randomized order during generation.
+- [x] Eligible people are randomized independently within each responsible job-code pool.
+- [x] Multi-job-code people can receive work from each eligible pool without one global ordering bias.
+- [x] Existing balanced task-count behavior is preserved within every job-code pool.
+- [x] Only the immediately previous posted week is used for repeat avoidance.
+- [x] A generated task avoids its previous person when another eligible person exists.
+- [x] No-prior-week generation works normally without false repeat matches.
+- [x] When every eligible person would repeat, the task is still assigned to an eligible person.
+- [x] Generation never assigns inactive, wrong-job-code, or task-excluded people.
+- [x] A week has no more than one active draft.
+- [x] Regenerate Draft requires explicit confirmation and replaces the entire unposted draft.
+- [x] Regeneration cannot replace or recreate a posted week.
+- [x] Posted assignments cannot be fully regenerated.
+- [x] Posted individual edits/swaps remain within the task's responsible job-code pool and enforce all eligibility rules.
+- [x] Draft regeneration, edits, and posting retain required audit behavior.
+- [x] Task templates can store an optional positive master-list number without breaking existing records/import formats.
+- [x] Manager and crew/task identity views display the master-list number when present.
+- [x] Posting asks whether the manager wants to print after successful posting.
+- [x] Declining the print option does not block or undo posting.
+- [x] Print view contains only the selected posted week.
+- [x] Print view groups assignments by responsible job code, then person.
+- [x] Each printed task shows its master-list number when present and has a blank checkbox before the task.
+- [x] Each person's printed task list has signature space after the tasks.
+- [x] Print view uses browser print styling and the normal browser/system print dialog; no custom PDF generator is added.
+- [x] Digital crew completion and planned reporting remain available and are not replaced by paper printing.
+- [x] Existing JSON/API contracts, role authorization, CSRF, completion ownership, notes, and full regression suite remain green.
+- [x] No secrets, credentials, PINs, or password hashes appear in pages or logs.
+- [x] Numbered text-file master-list import and schedule/availability rules remain deferred.
